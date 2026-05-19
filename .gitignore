@@ -1,0 +1,19 @@
+# Ambientes Virtuais
+venv/
+env/
+
+# Arquivos de Sistema e Cache do Python
+__pycache__/
+*.pyc
+.DS_Store
+
+# Variáveis de Ambiente e Credenciais
+.env
+*.json
+
+# Banco de Dados Local (já que usaremos o Drive para sincronizar)
+*.db
+*.sqlite3
+
+# Arquivos de Controle do Drive
+ultimo_backup_diario.txt
