@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Cadastros - ECOS{% endblock %}
+
+{% block content %}
+<div class="row mb-3 align-items-end">
+    <div class="col">
+        <h2 class="h4 text-secondary mb-1 fw-bold">Gestão de Cadastros</h2>
+        <p class="text-muted small mb-0">Gerencie a frota ativa e os motoristas autorizados do sistema.</p>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white pt-3 pb-0 border-bottom">
+        <ul class="nav nav-tabs border-0" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active fw-bold text-primary border-bottom-0" data-bs-toggle="tab" data-bs-target="#motoristas" type="button" role="tab">
+                    <i class="bi bi-person-badge-fill me-1"></i> Motoristas
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link fw-bold text-secondary border-bottom-0" data-bs-toggle="tab" data-bs-target="#veiculos" type="button" role="tab">
+                    <i class="bi bi-car-front-fill me-1"></i> Veículos
+                </button>
+            </li>
+        </ul>
+    </div>
+    
+    <div class="card-body p-4 bg-light">
+        <div class="tab-content">
+            
+            <div class="tab-pane fade show active" id="motoristas" role="tabpanel">
+                <div class="row g-4">
+                    <div class="col-lg-4">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-dark text-white fw-bold" id="titulo-form-mot">
+                                <i class="bi bi-plus-circle me-1"></i> Adicionar Motorista
+                            </div>
+                            <div class="card-body">
+                                <input type="hidden" id="cad-mot-id">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small text-secondary">Nome Completo</label>
+                                    <input type="text" id="cad-mot-nome" class="form-control" placeholder="Ex: João da Silva">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold small text-secondary">Matrícula / ID</label>
+                                    <input type="text" id="cad-mot-mat" class="form-control" placeholder="Ex: MAT-003">
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-primary fw-bold" id="btn-salvar-mot" onclick="salvarMotorista()">
+                                        <i class="bi bi-floppy-fill me-1"></i> Cadastrar Motorista
+                                    </button>
+                                    <button class="btn btn-outline-secondary d-none" id="btn-cancelar-mot" onclick="cancelarEdicaoMotorista()">
+                                        Cancelar Edição
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-8">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover align-middle mb-0" id="tabela-motoristas">
+                                        <thead class="table-light text-secondary">
+                                            <tr>
+                                                <th width="50%">Nome</th>
+                                                <th width="30%">Matrícula</th>
+                                                <th width="20%" class="text-center">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="veiculos" role="tabpanel">
+                <div class="row g-4">
+                    <div class="col-lg-4">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-dark text-white fw-bold" id="titulo-form-vei">
+                                <i class="bi bi-plus-circle me-1"></i> Adicionar Veículo
+                            </div>
+                            <div class="card-body">
+                                <input type="hidden" id="cad-vei-id">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small text-secondary">Placa</label>
+                                    <input type="text" id="cad-vei-placa" class="form-control text-uppercase" placeholder="Ex: ABC1234">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small text-secondary">Marca / Modelo / Versão</label>
+                                    <input type="text" id="cad-vei-modelo" class="form-control" placeholder="Ex: FIAT / ARGO 1.0">
+                                </div>
+                                <div class="row mb-3 g-2">
+                                    <div class="col-6">
+                                        <label class="form-label fw-bold small text-secondary">Ano</label>
+                                        <input type="number" id="cad-vei-ano" class="form-control" placeholder="Ex: 2018">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label fw-bold small text-secondary">Combustível</label>
+                                        <select id="cad-vei-comb" class="form-select">
+                                            <option value="FLEX">Flex</option>
+                                            <option value="GASOLINA">Gasolina</option>
+                                            <option value="DIESEL">Diesel</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small text-secondary">Espécie / Capacidade</label>
+                                    <input type="text" id="cad-vei-especie" class="form-control" placeholder="Ex: PASSEIO - 5P">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="form-label fw-bold small text-secondary">Proprietário / Locadora</label>
+                                    <input type="text" id="cad-vei-prop" class="form-control" placeholder="Ex: FROTA PRÓPRIA">
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-primary fw-bold" id="btn-salvar-vei" onclick="salvarVeiculo()">
+                                        <i class="bi bi-floppy-fill me-1"></i> Cadastrar Veículo
+                                    </button>
+                                    <button class="btn btn-outline-secondary d-none" id="btn-cancelar-vei" onclick="cancelarEdicaoVeiculo()">
+                                        Cancelar Edição
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-8">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-hover align-middle mb-0" id="tabela-veiculos">
+                                        <thead class="table-light text-secondary">
+                                            <tr>
+                                                <th width="25%">Placa</th>
+                                                <th width="55%">Modelo</th>
+                                                <th width="20%" class="text-center">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/cadastros.js') }}"></script>
+{% endblock %}

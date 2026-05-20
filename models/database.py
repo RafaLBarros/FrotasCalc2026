@@ -2,6 +2,7 @@
 import sqlite3
 import json
 from services.drive_sync import enviar_banco_para_o_drive
+from datetime import datetime, timedelta
 
 DB_PATH = 'ecos_database.db'
 
@@ -231,5 +232,166 @@ def buscar_ultima_jornada_dev():
         viagens_lista.reverse()
         
         return ultimo['id_motorista'], ultimo['id_veiculo'], viagens_lista
+    finally:
+        conexao.close()
+
+# =========================================================================
+# OPERAÇÕES DE BUSINESS INTELLIGENCE (MÓDULO BI COM DIM_DATA)
+# =========================================================================
+
+def inicializar_e_popular_dim_data():
+    """Cria a tabela dim_data se não existir e popula o histórico de 2025 a 2030."""
+    conexao = obter_conexao()
+    cursor = conexao.cursor()
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS dim_data (
+            id_data TEXT PRIMARY KEY,
+            ano INTEGER,
+            mes INTEGER,
+            nome_mes TEXT,
+            dia INTEGER,
+            dia_semana INTEGER,
+            nome_dia_semana TEXT,
+            eh_fim_semana INTEGER,
+            trimestre INTEGER
+        )
+    ''')
+    
+    # Se a tabela já contiver registros, não há necessidade de popular novamente
+    cursor.execute("SELECT COUNT(*) FROM dim_data")
+    if cursor.fetchone()[0] > 0:
+        conexao.close()
+        return
+        
+    print("📅 Populando dimensão de tempo dim_data (Calendário 2025 a 2030)...")
+    
+    meses_pt = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho",
+                7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
+    
+    dias_pt = {0: "Segunda-feira", 1: "Terça-feira", 2: "Quarta-feira", 3: "Quinta-feira",
+               4: "Sexta-feira", 5: "Sábado", 6: "Domingo"}
+               
+    data_inicio = datetime(2025, 1, 1)
+    data_fim = datetime(2030, 12, 31)
+    delta = timedelta(days=1)
+    
+    data_atual = data_inicio
+    valores = []
+    
+    while data_atual <= data_fim:
+        id_data = data_atual.strftime('%Y-%m-%d')
+        ano = data_atual.year
+        mes = data_atual.month
+        nome_mes = meses_pt[mes]
+        dia = data_atual.day
+        dia_semana = data_atual.weekday()  # 0 = Segunda-feira, 6 = Domingo
+        nome_dia_semana = dias_pt[dia_semana]
+        eh_fim_semana = 1 if dia_semana in [5, 6] else 0
+        trimestre = (mes - 1) // 3 + 1
+        
+        valores.append((id_data, ano, mes, nome_mes, dia, dia_semana, nome_dia_semana, eh_fim_semana, trimestre))
+        data_atual += delta
+        
+    cursor.executemany('''
+        INSERT INTO dim_data (id_data, ano, mes, nome_mes, dia, dia_semana, nome_dia_semana, eh_fim_semana, trimestre)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', valores)
+    
+    conexao.commit()
+    conexao.close()
+    print("✅ Dimensão de tempo dim_data estruturada com sucesso!")
+
+
+def obter_resumo_bi(id_motorista=None, data_inicio=None, data_fim=None, agrupamento='dia', apenas_fim_semana='todos'):
+    """Busca e agrega dados operacionais cruzando a fatos com a dim_data e aplicando filtros temporais."""
+    conexao = obter_conexao()
+    cursor = conexao.cursor()
+    
+    filtro_viagem = "WHERE 1=1"
+    filtro_abs = "WHERE 1=1"
+    params_viagem = []
+    params_abs = []
+    
+    # Filtro de Motorista
+    if id_motorista and id_motorista != 'todos':
+        filtro_viagem += " AND f.id_motorista = ?"
+        filtro_abs += " AND id_motorista = ?"
+        params_viagem.append(id_motorista)
+        params_abs.append(id_motorista)
+        
+    # Filtro de Período
+    if data_inicio and data_fim:
+        filtro_viagem += " AND f.data_viagem BETWEEN ? AND ?"
+        filtro_abs += " AND data_iso BETWEEN ? AND ?"
+        params_viagem.extend([data_inicio, data_fim])
+        params_abs.extend([data_inicio, data_fim])
+        
+    # Filtro Avançado da dim_data (Finais de Semana vs Dias Úteis)
+    if apenas_fim_semana == 'sim':
+        filtro_viagem += " AND d.eh_fim_semana = 1"
+        filtro_abs += " AND EXISTS (SELECT 1 FROM dim_data dd WHERE dd.id_data = data_iso AND dd.eh_fim_semana = 1)"
+    elif apenas_fim_semana == 'nao':
+        filtro_viagem += " AND d.eh_fim_semana = 0"
+        filtro_abs += " AND EXISTS (SELECT 1 FROM dim_data dd WHERE dd.id_data = data_iso AND dd.eh_fim_semana = 0)"
+            
+    try:
+        # 1. Distância Total utilizando JOIN relacional acelerado com dim_data
+        cursor.execute(f"""
+            SELECT SUM(f.distancia_percorrida) 
+            FROM fato_viagem f
+            JOIN dim_data d ON f.data_viagem = d.id_data
+            {filtro_viagem}
+        """, params_viagem)
+        total_km = cursor.fetchone()[0] or 0
+        
+        # 2. Total de Litros Abastecidos
+        cursor.execute(f"SELECT SUM(litros) FROM fato_abastecimento {filtro_abs}", params_abs)
+        total_litros = cursor.fetchone()[0] or 0
+        
+        # 3. Processamento de Alertas utilizando a dimensão de tempo
+        cursor.execute(f"""
+            SELECT f.alertas_gerados 
+            FROM fato_viagem f
+            JOIN dim_data d ON f.data_viagem = d.id_data
+            {filtro_viagem}
+        """, params_viagem)
+        todos_alertas_raw = cursor.fetchall()
+        
+        contagem_alertas = {"ERR": 0, "INC": 0, "ALT": 0}
+        for row in todos_alertas_raw:
+            try:
+                alertas_lista = json.loads(row[0])
+                if isinstance(alertas_lista, list):
+                    for a in alertas_lista:
+                        prefixo = a['codigo'][:3]
+                        if prefixo in contagem_alertas:
+                            contagem_alertas[prefixo] += 1
+            except: 
+                continue
+
+        # 4. Gráfico de Linha: Agrupamento pelas colunas calculadas da dim_data
+        if agrupamento == 'mes':
+            sql_tempo = "d.ano || '-' || printf('%02d', d.mes)"
+        else:
+            sql_tempo = "f.data_viagem"
+
+        query_grafico = f"""
+            SELECT {sql_tempo} as periodo, SUM(f.distancia_percorrida) 
+            FROM fato_viagem f
+            JOIN dim_data d ON f.data_viagem = d.id_data
+            {filtro_viagem}
+            GROUP BY periodo
+            ORDER BY periodo
+        """
+        cursor.execute(query_grafico, params_viagem)
+        km_por_tempo = [{"periodo": r[0], "km": r[1]} for r in cursor.fetchall()]
+
+        return {
+            "total_km": total_km,
+            "total_litros": total_litros,
+            "alertas": contagem_alertas,
+            "km_por_tempo": km_por_tempo
+        }
     finally:
         conexao.close()

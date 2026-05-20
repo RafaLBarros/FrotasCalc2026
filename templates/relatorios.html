@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard BI - ECOS{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h2 class="h4 text-secondary mb-1 fw-bold">Dashboard de Performance Analytics</h2>
+        <p class="text-muted small mb-0">Análise analítica avançada de frota com cruzamento relacional de tempo.</p>
+    </div>
+</div>
+
+<div class="row mb-4 align-items-end g-2">
+    <div class="col-md-3">
+        <label class="form-label small fw-bold text-secondary">👤 Motorista</label>
+        <select id="filtro-motorista" class="form-select form-select-sm shadow-sm">
+            <option value="todos">Todos os Motoristas</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label class="form-label small fw-bold text-secondary">📅 Período</label>
+        <div class="input-group input-group-sm shadow-sm">
+            <input type="date" id="filtro-data-inicio" class="form-control">
+            <span class="input-group-text px-1 bg-white border-start-0 border-end-0">até</span>
+            <input type="date" id="filtro-data-fim" class="form-control">
+        </div>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label small fw-bold text-secondary">📊 Agrupar Gráfico</label>
+        <select id="filtro-agrupamento" class="form-select form-select-sm shadow-sm">
+            <option value="dia">Por Dia</option>
+            <option value="mes">Por Mês</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label class="form-label small fw-bold text-secondary">🏖️ Tipo de Dia (dim_data)</label>
+        <select id="filtro-fim-semana" class="form-select form-select-sm shadow-sm">
+            <option value="todos">Todos os Dias</option>
+            <option value="nao">Apenas Dias Úteis</option>
+            <option value="sim">Apenas Finais de Semana ⚠️</option>
+        </select>
+    </div>
+    <div class="col-md-1">
+        <button class="btn btn-primary btn-sm w-100 shadow-sm fw-bold" onclick="carregarBI()" title="Aplicar Filtros">
+            <i class="bi bi-funnel-fill"></i>
+        </button>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm bg-primary text-white h-100">
+            <div class="card-body">
+                <h6 class="small fw-bold opacity-75">Distância Total</h6>
+                <h3 class="mb-0 fw-bold" id="kpi-km">0 <span class="fs-6 fw-normal">km</span></h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm bg-info text-white h-100">
+            <div class="card-body">
+                <h6 class="small fw-bold opacity-75">Consumo Médio</h6>
+                <h3 class="mb-0 fw-bold" id="kpi-consumo">0 <span class="fs-6 fw-normal">km/L</span></h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm bg-dark text-white h-100">
+            <div class="card-body">
+                <h6 class="small fw-bold opacity-75">Combustível Total</h6>
+                <h3 class="mb-0 fw-bold" id="kpi-litros">0 <span class="fs-6 fw-normal">L</span></h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div id="card-status-risco" class="card border-0 shadow-sm h-100 bg-secondary text-white">
+            <div class="card-body">
+                <h6 class="small fw-bold opacity-75">Nível de Risco</h6>
+                <h3 class="mb-0 fw-bold" id="kpi-risco">N/A</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold border-0 pt-3">
+                <i class="bi bi-activity text-primary me-2"></i>Histórico de Rodagem (KM/Dia)
+            </div>
+            <div class="card-body">
+                <canvas id="chartDistancia" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold border-0 pt-3">
+                <i class="bi bi-shield-exclamation text-danger me-2"></i>Distribuição de Alertas
+            </div>
+            <div class="card-body d-flex align-items-center">
+                <canvas id="chartAlertas" style="max-height: 250px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/relatorios.js') }}"></script>
+{% endblock %}

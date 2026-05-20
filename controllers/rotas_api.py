@@ -13,7 +13,8 @@ from models.database import (
     editar_motorista, excluir_motorista,
     editar_veiculo, excluir_veiculo,
     salvar_jornada, buscar_dados_completos_periodo,
-    buscar_ultima_jornada_dev
+    buscar_ultima_jornada_dev,
+    obter_resumo_bi
 )
 
 # Importa a matemática de auditoria do nosso Service
@@ -188,3 +189,16 @@ def api_importar():
         return jsonify({"status": "sucesso", "bdt": bdt_list, "combustivel": comb_list})
     except Exception as e:
         return jsonify({"status": "erro", "mensagem": str(e)}), 500
+
+# --- ROTAS DE BI PARA DASHBOARD ---
+@bp.route('/relatorios/bi', methods=['POST'])
+def api_relatorios_bi():
+    dados = request.get_json()
+    resumo = obter_resumo_bi(
+        id_motorista=dados.get('id_motorista'),
+        data_inicio=dados.get('data_inicio'),
+        data_fim=dados.get('data_fim'),
+        agrupamento=dados.get('agrupamento', 'dia'),
+        apenas_fim_semana=dados.get('apenas_fim_semana', 'todos') # <--- PASSA O FILTRO DE FIM DE SEMANA
+    )
+    return jsonify(resumo), 200
