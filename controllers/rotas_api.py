@@ -14,7 +14,8 @@ from models.database import (
     editar_veiculo, excluir_veiculo,
     salvar_jornada, buscar_dados_completos_periodo,
     buscar_ultima_jornada_dev,
-    obter_resumo_bi
+    obter_resumo_bi,
+    resetar_banco_dados
 )
 
 # Importa a matemática de auditoria do nosso Service
@@ -34,14 +35,20 @@ def obter_cadastros():
 @bp.route('/motoristas/salvar', methods=['POST'])
 def api_salvar_motorista():
     dados = request.get_json()
-    sucesso, mensagem = salvar_motorista(dados.get('nome'), dados.get('matricula'))
-    return jsonify({"status": "sucesso" if sucesso else "erro", "mensagem": mensagem}), 200 if sucesso else 400
+    if not dados or not dados.get('nome'):
+        return jsonify({"status": "erro", "mensagem": "O Nome é obrigatório."}), 400
+        
+    sucesso, msg = salvar_motorista(dados.get('nome'))
+    return jsonify({"status": "sucesso" if sucesso else "erro", "mensagem": msg}), 200 if sucesso else 500
 
 @bp.route('/motoristas/editar/<int:id_motorista>', methods=['PUT'])
 def api_editar_motorista(id_motorista):
     dados = request.get_json()
-    sucesso, mensagem = editar_motorista(id_motorista, dados.get('nome'), dados.get('matricula'))
-    return jsonify({"status": "sucesso" if sucesso else "erro", "mensagem": mensagem}), 200 if sucesso else 400
+    if not dados or not dados.get('nome'):
+        return jsonify({"status": "erro", "mensagem": "O Nome é obrigatório."}), 400
+        
+    sucesso, msg = editar_motorista(id_motorista, dados.get('nome'))
+    return jsonify({"status": "sucesso" if sucesso else "erro", "mensagem": msg}), 200 if sucesso else 500
 
 @bp.route('/motoristas/excluir/<int:id_motorista>', methods=['DELETE'])
 def api_excluir_motorista(id_motorista):
@@ -133,7 +140,16 @@ def api_importar():
         xls = pd.ExcelFile(io.BytesIO(file_bytes))
         
         df_bdt = pd.read_excel(xls, sheet_name='BDT Validado')
-        df_bdt = df_bdt.dropna(subset=['Dia'])
+        
+        # --- O SEGREDO: Procura a coluna de data independentemente do nome ---
+        possiveis_nomes_data = ['Dia', 'dia', 'Data', 'data', 'DATA']
+        coluna_data = next((col for col in df_bdt.columns if col in possiveis_nomes_data), None)
+        
+        if not coluna_data:
+            return jsonify({"status": "erro", "mensagem": f"Não encontrei a coluna de data. Colunas encontradas: {list(df_bdt.columns)}"}), 400
+            
+        # Limpa apenas usando a coluna que ele realmente achou
+        df_bdt = df_bdt.dropna(subset=[coluna_data])
         
         df_comb = pd.DataFrame()
         if 'Abastecimentos' in xls.sheet_names:
@@ -160,24 +176,25 @@ def api_importar():
 
         bdt_list = []
         for _, row in df_bdt.iterrows():
+            # A MÁGICA DA BLINDAGEM: Usamos .get() em tudo. Se a coluna não existir, ele retorna "" e não quebra o sistema (KeyError)
             bdt_list.append({
-                "dia": safe_date(row.get("Dia")),
+                "dia": safe_date(row.get(coluna_data)),
                 "hora_in": safe_str(row.get("Hora In", "")),
                 "hora_out": safe_str(row.get("Hora Fim", "")),
-                "origem": safe_str(row["Origem"]),
-                "destino": safe_str(row["Destino"]),
-                "km_in": safe_str(row["KM Inicial"]),
-                "km_out": safe_str(row["KM Final"]),
+                "origem": safe_str(row.get("Origem", "")),
+                "destino": safe_str(row.get("Destino", "")),
+                "km_in": safe_str(row.get("KM Inicial", "")),
+                "km_out": safe_str(row.get("KM Final", "")),
                 "km_maps": safe_str(row.get("KM Maps", ""))
             })
         
         comb_list = []
         if not df_comb.empty:
             for _, row in df_comb.iterrows():
-                col_dia = row.get("Dia") or row.get("dia")
+                col_dia = row.get("Dia") or row.get(coluna_data)
                 col_hora = row.get("Hora") or row.get("hora") or ""
-                col_km = row.get("KM Marcado na Bomba") or row.get("km_bomba") or row.get("KM_Abastecimento")
-                col_litros = row.get("Litros Abastecidos") or row.get("litros")
+                col_km = row.get("KM Marcado na Bomba") or row.get("km_bomba") or row.get("KM_Abastecimento", "")
+                col_litros = row.get("Litros Abastecidos") or row.get("litros", "")
 
                 comb_list.append({
                     "dia": safe_date(col_dia),
@@ -187,8 +204,15 @@ def api_importar():
                 })
 
         return jsonify({"status": "sucesso", "bdt": bdt_list, "combustivel": comb_list})
+        
     except Exception as e:
-        return jsonify({"status": "erro", "mensagem": str(e)}), 500
+        # O ESPIÃO: Isso vai imprimir as letras vermelhas na marra no terminal do seu VS Code!
+        import traceback
+        traceback.print_exc()
+        
+        # Garante que a mensagem de erro que volte seja uma string pura
+        erro_str = str(e)
+        return jsonify({"status": "erro", "mensagem": erro_str}), 500
 
 # --- ROTAS DE BI PARA DASHBOARD ---
 @bp.route('/relatorios/bi', methods=['POST'])
@@ -202,3 +226,10 @@ def api_relatorios_bi():
         apenas_fim_semana=dados.get('apenas_fim_semana', 'todos') # <--- PASSA O FILTRO DE FIM DE SEMANA
     )
     return jsonify(resumo), 200
+
+@bp.route('/dev/reset', methods=['POST'])
+def api_dev_reset():
+    dados = request.get_json() or {}
+    completo = dados.get('completo', False)
+    sucesso, mensagem = resetar_banco_dados(apagar_cadastros=completo)
+    return jsonify({"status": "sucesso" if sucesso else "erro", "mensagem": mensagem}), 200 if sucesso else 500

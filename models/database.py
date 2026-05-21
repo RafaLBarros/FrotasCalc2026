@@ -12,6 +12,75 @@ def obter_conexao():
     conexao.row_factory = sqlite3.Row 
     return conexao
 
+
+def inicializar_banco():
+    """Garante que todas as tabelas essenciais do sistema existam no banco."""
+    conexao = obter_conexao()
+    cursor = conexao.cursor()
+    
+    # 1. Tabela de Motoristas (Agora só com o Nome)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS dim_motorista (
+            id_motorista INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            ativo INTEGER DEFAULT 1
+        )
+    ''')
+
+    # 2. Tabela de Veículos
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS dim_veiculo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            placa TEXT UNIQUE NOT NULL,
+            marca_modelo TEXT NOT NULL,
+            ano_modelo INTEGER,
+            tipo_combustivel TEXT,
+            especie_capacidade TEXT,
+            proprietario_locadora TEXT,
+            status TEXT DEFAULT 'ATIVO'
+        )
+    ''')
+
+    # 3. Tabela de Viagens (Fato)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fato_viagem (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_motorista INTEGER,
+            id_veiculo INTEGER,
+            data_viagem TEXT,
+            hora_inicio TEXT,
+            hora_fim TEXT,
+            origem TEXT,
+            destino TEXT,
+            km_inicial REAL,
+            km_final REAL,
+            distancia_percorrida REAL,
+            km_maps_opcional TEXT,
+            alertas_gerados TEXT,
+            FOREIGN KEY (id_motorista) REFERENCES dim_motorista(id_motorista),
+            FOREIGN KEY (id_veiculo) REFERENCES dim_veiculo(id)
+        )
+    ''')
+
+    # 4. Tabela de Abastecimentos (Fato)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fato_abastecimento (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_motorista INTEGER,
+            id_veiculo INTEGER,
+            data_iso TEXT,
+            hora TEXT,
+            km_bomba REAL,
+            litros REAL,
+            FOREIGN KEY (id_motorista) REFERENCES dim_motorista(id_motorista),
+            FOREIGN KEY (id_veiculo) REFERENCES dim_veiculo(id)
+        )
+    ''')
+
+    conexao.commit()
+    conexao.close()
+    print("✅ Estrutura principal do banco de dados verificada/criada com sucesso.")
+
 # ==========================================
 # LEITURA (READ)
 # ==========================================
@@ -19,10 +88,11 @@ def obter_conexao():
 def listar_motoristas_ativos():
     conexao = obter_conexao()
     cursor = conexao.cursor()
-    cursor.execute("SELECT id, nome, matricula FROM dim_motorista WHERE status = 'ATIVO' ORDER BY nome")
-    motoristas = cursor.fetchall()
+    # Puxa apenas o ID e o Nome
+    cursor.execute("SELECT id_motorista, nome FROM dim_motorista WHERE ativo = 1 ORDER BY nome")
+    motoristas = [{"id": r[0], "nome": r[1]} for r in cursor.fetchall()]
     conexao.close()
-    return [{"id": m["id"], "nome": m["nome"], "matricula": m["matricula"]} for m in motoristas]
+    return motoristas
 
 def listar_veiculos_ativos():
     conexao = obter_conexao()
@@ -44,18 +114,18 @@ def listar_veiculos_ativos():
 # ESCRITA E MODIFICAÇÃO (CRUD)
 # ==========================================
 
-def salvar_motorista(nome, matricula):
+def salvar_motorista(nome):
     conexao = obter_conexao()
     cursor = conexao.cursor()
     try:
-        cursor.execute("INSERT INTO dim_motorista (nome, matricula) VALUES (?, ?)", (nome, matricula))
+        # Insere apenas o nome
+        cursor.execute("INSERT INTO dim_motorista (nome, ativo) VALUES (?, 1)", (nome,))
         conexao.commit()
         enviar_banco_para_o_drive()
         return True, "Motorista cadastrado com sucesso!"
-    except sqlite3.IntegrityError:
-        return False, "Erro: Essa matrícula já está cadastrada no sistema."
     except Exception as e:
-        return False, f"Erro inesperado: {str(e)}"
+        conexao.rollback()
+        return False, f"Erro ao cadastrar motorista: {str(e)}"
     finally:
         conexao.close()
 
@@ -78,16 +148,18 @@ def salvar_veiculo(placa, modelo, ano, combustivel, especie, proprietario):
     finally:
         conexao.close()
 
-def editar_motorista(id_motorista, nome, matricula):
+def editar_motorista(id_motorista, nome):
     conexao = obter_conexao()
     cursor = conexao.cursor()
     try:
-        cursor.execute("UPDATE dim_motorista SET nome = ?, matricula = ? WHERE id = ?", (nome, matricula, id_motorista))
+        # Atualiza apenas o nome
+        cursor.execute("UPDATE dim_motorista SET nome = ? WHERE id_motorista = ?", (nome, id_motorista))
         conexao.commit()
         enviar_banco_para_o_drive()
         return True, "Motorista atualizado com sucesso!"
     except Exception as e:
-        return False, f"Erro ao editar: {str(e)}"
+        conexao.rollback()
+        return False, f"Erro ao editar motorista: {str(e)}"
     finally:
         conexao.close()
 
@@ -95,7 +167,7 @@ def excluir_motorista(id_motorista):
     conexao = obter_conexao()
     cursor = conexao.cursor()
     try:
-        cursor.execute("DELETE FROM dim_motorista WHERE id = ?", (id_motorista,))
+        cursor.execute("DELETE FROM dim_motorista WHERE id_motorista = ?", (id_motorista,))
         conexao.commit()
         enviar_banco_para_o_drive()
         return True, "Motorista excluído com sucesso!"
@@ -393,5 +465,29 @@ def obter_resumo_bi(id_motorista=None, data_inicio=None, data_fim=None, agrupame
             "alertas": contagem_alertas,
             "km_por_tempo": km_por_tempo
         }
+    finally:
+        conexao.close()
+
+
+def resetar_banco_dados(apagar_cadastros=False):
+    """Apaga os dados operacionais do banco para testes. Mantém a dim_data intacta."""
+    conexao = obter_conexao()
+    cursor = conexao.cursor()
+    try:
+        # Apaga sempre as viagens e abastecimentos
+        cursor.execute("DELETE FROM fato_viagem")
+        cursor.execute("DELETE FROM fato_abastecimento")
+        
+        # Se quiser um Hard Reset total (apagar motoristas e carros também)
+        if apagar_cadastros:
+            cursor.execute("DELETE FROM dim_motorista")
+            cursor.execute("DELETE FROM dim_veiculo")
+            
+        conexao.commit()
+        enviar_banco_para_o_drive()
+        return True, "Banco de dados limpo com sucesso! Nenhuma viagem restante."
+    except Exception as e:
+        conexao.rollback()
+        return False, f"Erro ao limpar o banco: {str(e)}"
     finally:
         conexao.close()

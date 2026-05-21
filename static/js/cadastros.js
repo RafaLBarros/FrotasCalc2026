@@ -34,7 +34,7 @@ function atualizarTabelaMotoristas() {
     tbody.innerHTML = '';
     
     if(listaMotoristasGlobal.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">Nenhum motorista cadastrado.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-4">Nenhum motorista cadastrado.</td></tr>';
         return;
     }
 
@@ -42,7 +42,6 @@ function atualizarTabelaMotoristas() {
         tbody.innerHTML += `
             <tr>
                 <td class="fw-semibold">${m.nome}</td>
-                <td><span class="badge bg-secondary">${m.matricula}</span></td>
                 <td class="text-center">
                     <button class="btn btn-sm btn-outline-warning border-0" onclick="prepararEdicaoMotorista(${m.id})" title="Editar"><i class="bi bi-pencil-square"></i></button>
                     <button class="btn btn-sm btn-outline-danger border-0" onclick="excluirMotorista(${m.id})" title="Excluir"><i class="bi bi-trash3"></i></button>
@@ -55,11 +54,10 @@ function atualizarTabelaMotoristas() {
 async function salvarMotorista() {
     const id = document.getElementById('cad-mot-id').value;
     const payload = {
-        nome: document.getElementById('cad-mot-nome').value,
-        matricula: document.getElementById('cad-mot-mat').value
+        nome: document.getElementById('cad-mot-nome').value
     };
     
-    if(!payload.nome || !payload.matricula) return alert("Preencha todos os campos do Motorista!");
+    if(!payload.nome) return alert("Preencha o Nome do Motorista!");
     
     const url = id ? `/api/motoristas/editar/${id}` : '/api/motoristas/salvar';
     const method = id ? 'PUT' : 'POST';
@@ -94,7 +92,6 @@ function prepararEdicaoMotorista(id) {
     
     document.getElementById('cad-mot-id').value = mot.id;
     document.getElementById('cad-mot-nome').value = mot.nome;
-    document.getElementById('cad-mot-mat').value = mot.matricula;
     
     document.getElementById('titulo-form-mot').innerHTML = "<i class='bi bi-pencil-square me-1'></i> Editar Motorista";
     document.getElementById('btn-salvar-mot').innerHTML = "<i class='bi bi-arrow-repeat me-1'></i> Atualizar Motorista";
@@ -105,7 +102,6 @@ function prepararEdicaoMotorista(id) {
 function cancelarEdicaoMotorista() {
     document.getElementById('cad-mot-id').value = '';
     document.getElementById('cad-mot-nome').value = '';
-    document.getElementById('cad-mot-mat').value = '';
     
     document.getElementById('titulo-form-mot').innerHTML = "<i class='bi bi-plus-circle me-1'></i> Adicionar Motorista";
     document.getElementById('btn-salvar-mot').innerHTML = "<i class='bi bi-floppy-fill me-1'></i> Cadastrar Motorista";

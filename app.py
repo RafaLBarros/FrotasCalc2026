@@ -3,7 +3,7 @@ import os
 from flask import Flask, render_template
 from dotenv import load_dotenv
 from services.drive_sync import baixar_banco_mais_recente
-from models.database import inicializar_e_popular_dim_data
+from models.database import inicializar_e_popular_dim_data, inicializar_banco
 
 load_dotenv()
 
@@ -13,6 +13,10 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ecos_secret_key_v2')
 print("🚀 Inicializando persistência de dados via Google Drive...")
 baixar_banco_mais_recente()
 
+# NOVIDADE: Primeiro ele cria a estrutura básica se não existir
+inicializar_banco()
+
+# Depois ele cria e popula o calendário de tempo
 inicializar_e_popular_dim_data()
 
 @app.route('/')
@@ -34,4 +38,4 @@ from controllers.rotas_api import bp
 app.register_blueprint(bp)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

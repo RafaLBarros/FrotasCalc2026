@@ -53,9 +53,10 @@ async function carregarMotoristasEVeiculos() {
 }
 
 // ==========================================
-// CONTROLE DE TABELAS
+// CONTROLE DE TABELAS E SUGESTÕES
 // ==========================================
-function criarNovaLinhaBDT() {
+
+function criarNovaLinhaBDT(sugestaoDia = '', sugestaoHoraIn = '', sugestaoOrigem = '', sugestaoKmIn = '') {
     const tbody = document.querySelector('#bdtTable tbody');
     let numParadas = document.querySelectorAll('#bdtTable thead th.th-parada').length;
     let tdsParadas = '';
@@ -66,13 +67,15 @@ function criarNovaLinhaBDT() {
     
     const tr = document.createElement('tr');
     tr.innerHTML = `
-        <td><input type="date" class="form-control form-control-sm data-viagem"></td>
-        <td><input type="time" class="form-control form-control-sm hora-in"></td>
-        <td><input type="number" step="0.1" class="form-control form-control-sm km-in"></td>
-        <td><input type="text" class="form-control form-control-sm origem" placeholder="Origem" oninput="sincronizarCacheMaps(this)"></td>
+        <td><input type="text" class="form-control form-control-sm data-viagem" placeholder="${sugestaoDia || 'DD/MM/AAAA'}" data-sugestao="${sugestaoDia}" maxlength="10" oninput="mascaraData(this)" onblur="completarAno(this)"></td>
+        <td><input type="text" class="form-control form-control-sm hora-in" placeholder="${sugestaoHoraIn || 'HH:MM'}" data-sugestao="${sugestaoHoraIn}" maxlength="5" oninput="mascaraHora(this)"></td>
+        <td><input type="number" step="0.1" class="form-control form-control-sm km-in" placeholder="${sugestaoKmIn}" data-sugestao="${sugestaoKmIn}"></td>
+        
+        <td><input type="text" class="form-control form-control-sm origem" placeholder="${sugestaoOrigem}" data-sugestao="${sugestaoOrigem}" oninput="sincronizarCacheMaps(this); atualizarSugestaoDestino(this.closest('tr'))"></td>
+        
         ${tdsParadas}
         <td class="td-destino"><input type="text" class="form-control form-control-sm destino" placeholder="Destino" oninput="sincronizarCacheMaps(this)"></td>
-        <td><input type="time" class="form-control form-control-sm hora-out"></td>
+        <td><input type="text" class="form-control form-control-sm hora-out" placeholder="HH:MM" maxlength="5" oninput="mascaraHora(this)"></td>
         <td><input type="number" step="0.1" class="form-control form-control-sm km-out"></td>
         <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" oninput="sincronizarCacheMaps(this)"></td>
         <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)"><i class="bi bi-trash3"></i></button></td>
@@ -84,8 +87,8 @@ function criarNovaLinhaComb() {
     const tbody = document.querySelector('#combTable tbody');
     const tr = document.createElement('tr');
     tr.innerHTML = `
-        <td><input type="date" class="form-control form-control-sm data-viagem"></td>
-        <td><input type="time" class="form-control form-control-sm hora"></td>
+        <td><input type="text" class="form-control form-control-sm data-viagem" placeholder="DD/MM/AAAA" maxlength="10" oninput="mascaraData(this)" onblur="completarAno(this)"></td>
+        <td><input type="text" class="form-control form-control-sm hora" placeholder="HH:MM" maxlength="5" oninput="mascaraHora(this)"></td>
         <td><input type="number" step="0.1" class="form-control form-control-sm km-bomba"></td>
         <td><input type="number" step="0.1" class="form-control form-control-sm litros"></td>
         <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)"><i class="bi bi-trash3"></i></button></td>
@@ -139,8 +142,50 @@ function removerColunaParada(inputParada) {
 }
 
 // ==========================================
-// INTELIGÊNCIA DA TABELA (Cache Maps e Teclado)
+// INTELIGÊNCIA DA TABELA E TECLADO
 // ==========================================
+
+// NOVIDADE: A inteligência que "adivinha" o destino do motorista
+window.atualizarSugestaoDestino = function(trAtual) {
+    const inputOrigem = trAtual.querySelector('.origem');
+    const inputDestino = trAtual.querySelector('.destino');
+    if (!inputOrigem || !inputDestino) return;
+
+    const origemAtual = inputOrigem.value.trim().toUpperCase();
+    if (origemAtual === "") return;
+
+    const linhas = Array.from(document.querySelectorAll('#bdtTable tbody tr'));
+    const indexAtual = linhas.indexOf(trAtual);
+    if (indexAtual <= 0) return;
+
+    const contagemDestinos = {};
+    let maxOcorrencias = 0;
+    let destinoMaisComum = "";
+
+    for (let i = 0; i < indexAtual; i++) {
+        const origemPassada = linhas[i].querySelector('.origem').value.trim().toUpperCase();
+        const destinoPassado = linhas[i].querySelector('.destino').value.trim();
+        if (origemPassada === origemAtual && destinoPassado !== "") {
+            const chave = destinoPassado.toUpperCase();
+            contagemDestinos[chave] = (contagemDestinos[chave] || {nome: destinoPassado, cont: 0});
+            contagemDestinos[chave].cont += 1;
+            if (contagemDestinos[chave].cont > maxOcorrencias) {
+                maxOcorrencias = contagemDestinos[chave].cont;
+                destinoMaisComum = contagemDestinos[chave].nome;
+            }
+        }
+    }
+
+    if (destinoMaisComum !== "") {
+        inputDestino.placeholder = destinoMaisComum;
+        inputDestino.dataset.sugestao = destinoMaisComum;
+    } else {
+        inputDestino.placeholder = "Destino";
+        inputDestino.dataset.sugestao = "";
+    }
+};
+
+// CORREÇÃO: Removemos o bloqueio de caixa vazia para não cortar os números digitados
 window.sincronizarCacheMaps = function(el) {
     const tr = el.closest('tr');
     const o = (tr.querySelector('.origem')?.value || '').trim().toUpperCase();
@@ -150,13 +195,14 @@ window.sincronizarCacheMaps = function(el) {
     const chave = o + " -> " + d;
     const inputMaps = tr.querySelector('.km-maps');
     
-    if (el.classList.contains('km-maps') && inputMaps.value) {
+    if (el.classList.contains('km-maps')) {
         cacheDeRotasMaps[chave] = inputMaps.value;
         document.querySelectorAll('#bdtTable tbody tr').forEach(row => {
-            const rowO = (row.querySelector('.origem')?.value || '').toUpperCase();
-            const rowD = (row.querySelector('.destino')?.value || '').toUpperCase();
+            const rowO = (row.querySelector('.origem')?.value || '').trim().toUpperCase();
+            const rowD = (row.querySelector('.destino')?.value || '').trim().toUpperCase();
             const rowMaps = row.querySelector('.km-maps');
-            if (rowO === o && rowD === d && rowMaps && rowMaps !== inputMaps && !rowMaps.value) {
+            // Força a cópia exata do que está sendo digitado para as outras linhas iguais
+            if (rowO === o && rowD === d && rowMaps && rowMaps !== inputMaps) {
                 rowMaps.value = inputMaps.value;
             }
         });
@@ -190,6 +236,12 @@ function configurarAtalhosTeclado() {
                 return;
             }
             
+            // NOVIDADE: Auto-preenche com a sugestão fantasma se o usuário apertar Enter no campo vazio
+            if (input.value === '' && input.dataset.sugestao) {
+                input.value = input.dataset.sugestao;
+                if(input.classList.contains('destino')) sincronizarCacheMaps(input);
+            }
+
             const tr = input.closest('tr');
             const inputs = Array.from(tr.querySelectorAll('input'));
             const idx = inputs.indexOf(input);
@@ -198,8 +250,18 @@ function configurarAtalhosTeclado() {
                 inputs[idx + 1].focus();
             } else {
                 if (!tr.nextElementSibling) {
-                    if (tr.closest('table').id === 'bdtTable') criarNovaLinhaBDT();
-                    else criarNovaLinhaComb();
+                    if (tr.closest('table').id === 'bdtTable') {
+                        // NOVIDADE: Puxa os dados da linha anterior para criar as sugestões da próxima
+                        const diaAtual = tr.querySelector('.data-viagem').value;
+                        const horaInAtual = tr.querySelector('.hora-out').value; // A hora de saída vira a de entrada
+                        const destinoAtual = tr.querySelector('.destino').value; // O destino vira a origem
+                        const kmFinalAtual = tr.querySelector('.km-out').value; // O KM final vira o KM inicial
+                        
+                        criarNovaLinhaBDT(diaAtual, horaInAtual, destinoAtual, kmFinalAtual);
+                    }
+                    else {
+                        criarNovaLinhaComb();
+                    }
                 }
                 tr.nextElementSibling.querySelector('input').focus();
             }
@@ -236,7 +298,7 @@ window.enviarParaAuditoria = async function() {
             if (paradas.length > 0) destinoFinal = paradas.join(' ➔ ') + ' ➔ ' + destinoFinal;
             
             payload.bdt.push({
-                dia: tr.querySelector('.data-viagem').value,
+                dia: parseDiaParaAPI(tr.querySelector('.data-viagem').value),
                 hora_in: tr.querySelector('.hora-in').value,
                 hora_out: tr.querySelector('.hora-out').value,
                 origem: tr.querySelector('.origem').value,
@@ -255,7 +317,7 @@ window.enviarParaAuditoria = async function() {
             temErroVazio = true;
             inputs.filter(i => i.value.trim() === '').forEach(i => i.classList.add('is-invalid'));
         } else if (preenchidos.length === 4) {
-            payload.combustivel.push({ dia: inputs[0].value, hora: inputs[1].value, km_bomba: inputs[2].value, litros: inputs[3].value });
+            payload.combustivel.push({ dia: parseDiaParaAPI(inputs[0].value), hora: inputs[1].value, km_bomba: inputs[2].value, litros: inputs[3].value });
         }
     });
 
@@ -582,13 +644,13 @@ window.executarMockMensal = async function() {
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><input type="date" class="form-control form-control-sm data-viagem" value="${linha.data_viagem || linha.data_iso}"></td>
-                    <td><input type="time" class="form-control form-control-sm hora-in" value="${linha.hora_inicio}"></td>
+                    <td><input type="text" class="form-control form-control-sm data-viagem" value="${formatarDataImportacao(linha.data_viagem || linha.data_iso)}" maxlength="10" oninput="mascaraData(this)" onblur="completarAno(this)"></td>
+                    <td><input type="text" class="form-control form-control-sm hora-in" value="${formatarHoraImportacao(linha.hora_inicio)}" maxlength="5" oninput="mascaraHora(this)"></td>
                     <td><input type="number" step="0.1" class="form-control form-control-sm km-in" value="${linha.km_inicial}"></td>
                     <td><input type="text" class="form-control form-control-sm origem" value="${linha.origem}" oninput="sincronizarCacheMaps(this)"></td>
                     ${tdsParadas}
                     <td class="td-destino"><input type="text" class="form-control form-control-sm destino" value="${destinoFinal}" oninput="sincronizarCacheMaps(this)"></td>
-                    <td><input type="time" class="form-control form-control-sm hora-out" value="${linha.hora_fim}"></td>
+                    <td><input type="text" class="form-control form-control-sm hora-out" value="${formatarHoraImportacao(linha.hora_fim)}" maxlength="5" oninput="mascaraHora(this)"></td>
                     <td><input type="number" step="0.1" class="form-control form-control-sm km-out" value="${linha.km_final}"></td>
                     <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" value="${linha.km_maps_opcional || ''}" oninput="sincronizarCacheMaps(this)"></td>
                     <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)"><i class="bi bi-trash3"></i></button></td>
@@ -605,8 +667,8 @@ window.executarMockMensal = async function() {
             resultado.abastecimentos.forEach(linha => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><input type="date" class="form-control form-control-sm data-viagem" value="${linha.data_iso}"></td>
-                    <td><input type="time" class="form-control form-control-sm hora" value="${linha.hora}"></td>
+                    <td><input type="text" class="form-control form-control-sm data-viagem" value="${formatarDataImportacao(linha.data_iso)}" maxlength="10" oninput="mascaraData(this)" onblur="completarAno(this)"></td>
+                    <td><input type="text" class="form-control form-control-sm hora" value="${formatarHoraImportacao(linha.hora)}" maxlength="5" oninput="mascaraHora(this)"></td>
                     <td><input type="number" step="0.1" class="form-control form-control-sm km-bomba" value="${linha.km_bomba}"></td>
                     <td><input type="number" step="0.1" class="form-control form-control-sm litros" value="${linha.litros}"></td>
                     <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)"><i class="bi bi-trash3"></i></button></td>
@@ -688,13 +750,13 @@ window.importarExcel = async function(event) {
                     
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td><input type="date" class="form-control form-control-sm data-viagem" value="${linha.dia}"></td> 
-                        <td><input type="time" class="form-control form-control-sm hora-in" value="${linha.hora_in}"></td> 
+                        <td><input type="text" class="form-control form-control-sm data-viagem" value="${formatarDataImportacao(linha.dia)}" maxlength="10" oninput="mascaraData(this)" onblur="completarAno(this)"></td> 
+                        <td><input type="text" class="form-control form-control-sm hora-in" value="${formatarHoraImportacao(linha.hora_in)}" maxlength="5" oninput="mascaraHora(this)"></td> 
                         <td><input type="number" step="0.1" class="form-control form-control-sm km-in" value="${linha.km_in}"></td>
                         <td><input type="text" class="form-control form-control-sm origem" value="${linha.origem}" oninput="sincronizarCacheMaps(this)"></td> 
                         ${tdsParadas} 
                         <td class="td-destino"><input type="text" class="form-control form-control-sm destino" value="${destinoFinal}" oninput="sincronizarCacheMaps(this)"></td>
-                        <td><input type="time" class="form-control form-control-sm hora-out" value="${linha.hora_out}"></td> 
+                        <td><input type="text" class="form-control form-control-sm hora-out" value="${formatarHoraImportacao(linha.hora_out)}" maxlength="5" oninput="mascaraHora(this)"></td> 
                         <td><input type="number" step="0.1" class="form-control form-control-sm km-out" value="${linha.km_out}"></td> 
                         <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" value="${linha['KM Maps'] || linha.km_maps || ''}" placeholder="Ex: 25.5" oninput="sincronizarCacheMaps(this)"></td> 
                         <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)" title="Excluir linha"><i class="bi bi-trash3"></i></button></td>
@@ -709,8 +771,8 @@ window.importarExcel = async function(event) {
                 resultado.combustivel.forEach(linha => {
                     const tr = document.createElement('tr'); 
                     tr.innerHTML = `
-                        <td><input type="date" class="form-control form-control-sm data-viagem" value="${linha.dia}"></td> 
-                        <td><input type="time" class="form-control form-control-sm hora" value="${linha.hora || ''}"></td> 
+                        <td><input type="text" class="form-control form-control-sm data-viagem" value="${formatarDataImportacao(linha.dia)}" maxlength="10" oninput="mascaraData(this)" onblur="completarAno(this)"></td> 
+                        <td><input type="text" class="form-control form-control-sm hora" value="${formatarHoraImportacao(linha.hora || '')}" maxlength="5" oninput="mascaraHora(this)"></td> 
                         <td><input type="number" step="0.1" class="form-control form-control-sm km-bomba" value="${linha.km_bomba}"></td> 
                         <td><input type="number" step="0.1" class="form-control form-control-sm litros" value="${linha.litros}"></td> 
                         <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)" title="Excluir linha"><i class="bi bi-trash3"></i></button></td>
@@ -787,5 +849,202 @@ window.importarPDF = async function(event) {
         btnVisual.innerHTML = textoOriginal;
         btnVisual.disabled = false;
         event.target.value = ''; 
+    }
+};
+
+window.resetarBanco = async function() {
+    // Trava de segurança 1
+    if (!confirm("🚨 ATENÇÃO! Isso vai apagar TODAS as viagens e abastecimentos do banco de dados (os cadastros de motoristas e veículos serão mantidos). Deseja continuar?")) return;
+    
+    // Trava de segurança 2
+    if (!confirm("Tem certeza absoluta? Essa ação apagará a nuvem também e NÃO tem volta.")) return;
+
+    try {
+        const res = await fetch('/api/dev/reset', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completo: false }) // Mude para true se quiser que apague motoristas também
+        });
+        const resultado = await res.json();
+        
+        if (resultado.status === "sucesso") {
+            alert("✅ " + resultado.mensagem);
+            location.reload(); // Dá um F5 na página para limpar tudo da tela
+        } else {
+            alert("❌ Erro: " + resultado.mensagem);
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Erro fatal de comunicação ao tentar resetar o banco.");
+    }
+};
+
+
+// ==========================================
+// MÁSCARAS DE DATA E HORA
+// ==========================================
+window.mascaraData = function(el) {
+    let v = el.value.replace(/\D/g, ''); 
+    if (v.length > 2) v = v.substring(0, 2) + '/' + v.substring(2);
+    if (v.length > 5) v = v.substring(0, 5) + '/' + v.substring(5, 9);
+    el.value = v;
+};
+
+window.mascaraHora = function(el) {
+    let v = el.value.replace(/\D/g, ''); 
+    if (v.length > 2) v = v.substring(0, 2) + ':' + v.substring(2, 4);
+    el.value = v;
+};
+
+// NOVIDADE: Completa o ano visualmente quando sai do campo
+window.completarAno = function(el) {
+    let partes = el.value.split('/');
+    if (partes.length === 3 && partes[2].length === 2) {
+        partes[2] = '20' + partes[2]; // Transforma 26 em 2026
+        el.value = partes.join('/');
+    }
+};
+
+// ATUALIZADO: Protege a API caso a data vá com 2 dígitos
+window.parseDiaParaAPI = function(d) {
+    if (!d) return '';
+    if (d.includes('/')) {
+        let partes = d.split('/');
+        if (partes.length === 3 && partes[2].length === 2) {
+            partes[2] = '20' + partes[2]; 
+        }
+        return partes.reverse().join('-');
+    }
+    return d;
+};
+
+
+// INTELIGÊNCIA: Sugestão de Destino baseada no preenchimento atual (Curto Prazo)
+window.atualizarSugestaoDestino = function(trAtual) {
+    const inputOrigem = trAtual.querySelector('.origem');
+    const inputDestino = trAtual.querySelector('.destino');
+    if (!inputOrigem || !inputDestino) return;
+
+    const origemAtual = inputOrigem.value.trim().toUpperCase();
+    if (origemAtual === "") {
+        inputDestino.placeholder = "Destino";
+        inputDestino.dataset.sugestao = "";
+        return;
+    }
+
+    // Pega todas as linhas e vê em qual estamos
+    const linhas = Array.from(document.querySelectorAll('#bdtTable tbody tr'));
+    const indexAtual = linhas.indexOf(trAtual);
+    if (indexAtual <= 0) return; // Se for a primeira linha, não tem o que olhar
+
+    let maxOcorrencias = 0;
+    let destinoMaisComum = "";
+    const contagemDestinos = {};
+
+    // Procura apenas nas linhas ACIMA da atual
+    for (let i = 0; i < indexAtual; i++) {
+        const origemPassada = linhas[i].querySelector('.origem').value.trim().toUpperCase();
+        const destinoPassado = linhas[i].querySelector('.destino').value.trim();
+        
+        if (origemPassada === origemAtual && destinoPassado !== "") {
+            const chave = destinoPassado.toUpperCase();
+            contagemDestinos[chave] = (contagemDestinos[chave] || {nome: destinoPassado, cont: 0});
+            contagemDestinos[chave].cont += 1;
+            
+            if (contagemDestinos[chave].cont > maxOcorrencias) {
+                maxOcorrencias = contagemDestinos[chave].cont;
+                destinoMaisComum = contagemDestinos[chave].nome;
+            }
+        }
+    }
+
+    // Aplica a sugestão dinamicamente como "Fantasma" e guarda no dataset
+    if (destinoMaisComum !== "") {
+        inputDestino.placeholder = destinoMaisComum;
+        inputDestino.dataset.sugestao = destinoMaisComum;
+    } else {
+        inputDestino.placeholder = "Destino";
+        inputDestino.dataset.sugestao = "";
+    }
+};
+
+// ==========================================
+// TRADUTORES DE IMPORTAÇÃO (EXCEL / PDF) BLINDADOS
+// ==========================================
+window.formatarDataImportacao = function(dataBruta) {
+    console.log("🔍 Tradutor Data recebendo:", dataBruta, "| Tipo:", typeof dataBruta);
+    
+    // Se vier vazio, nulo ou undefined, devolve vazio sem dar erro
+    if (dataBruta === null || dataBruta === undefined || dataBruta === "") return "";
+
+    try {
+        // 1. O SEGREDO DO PANDAS: Se for um Número (Timestamp em milissegundos)
+        if (typeof dataBruta === 'number') {
+            const d = new Date(dataBruta);
+            // Usamos UTC para impedir que o fuso horário atrase a data em 1 dia
+            const dia = String(d.getUTCDate()).padStart(2, '0');
+            const mes = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const ano = d.getUTCFullYear();
+            return `${dia}/${mes}/${ano}`;
+        }
+
+        // 2. Se for um Texto (String)
+        if (typeof dataBruta === 'string') {
+            const strLimpa = dataBruta.trim();
+            
+            // Já tá no formato BR (DD/MM/AAAA)?
+            if (strLimpa.includes('/')) return strLimpa;
+            
+            // Padrão Banco/ISO (AAAA-MM-DD ou AAAA-MM-DDTHH:MM)
+            if (strLimpa.includes('-')) {
+                const dataApenas = strLimpa.split('T')[0]; 
+                const partes = dataApenas.split('-'); 
+                if (partes.length === 3) return `${partes[2]}/${partes[1]}/${partes[0]}`;
+            }
+
+            // String gringa de data (Wed, 14 May 2026...)
+            const dText = new Date(strLimpa);
+            if (!isNaN(dText)) {
+                const dia = String(dText.getDate()).padStart(2, '0');
+                const mes = String(dText.getMonth() + 1).padStart(2, '0');
+                const ano = dText.getFullYear();
+                return `${dia}/${mes}/${ano}`;
+            }
+        }
+
+        // 3. Fallback: Se não entendeu, devolve como string para o usuário consertar
+        return String(dataBruta);
+        
+    } catch (e) {
+        console.error("❌ Erro interno ao formatar data:", e, dataBruta);
+        return ""; // Se tudo explodir, retorna vazio em vez de travar a tela
+    }
+};
+
+window.formatarHoraImportacao = function(horaBruta) {
+    console.log("⏱️ Tradutor Hora recebendo:", horaBruta, "| Tipo:", typeof horaBruta);
+    
+    if (horaBruta === null || horaBruta === undefined || horaBruta === "") return "";
+
+    try {
+        // 1. Se for Texto ("14:30" ou "14:30:00")
+        if (typeof horaBruta === 'string') {
+            let h = horaBruta.trim();
+            if (h.includes(':')) return h.substring(0, 5); // Corta os segundos, deixa HH:MM
+            return h;
+        }
+        
+        // 2. Se o Python mandar um Timestamp numérico para a hora
+        if (typeof horaBruta === 'number') {
+            const d = new Date(horaBruta);
+            const hr = String(d.getUTCHours()).padStart(2, '0');
+            const mn = String(d.getUTCMinutes()).padStart(2, '0');
+            return `${hr}:${mn}`;
+        }
+
+        return String(horaBruta);
+    } catch (e) {
+        console.error("❌ Erro interno ao formatar hora:", e, horaBruta);
+        return "";
     }
 };

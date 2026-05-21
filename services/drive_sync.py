@@ -1,4 +1,3 @@
-# arquivo: services/drive_sync.py
 import os
 import json
 import io
@@ -6,18 +5,36 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
+# ==========================================
+# CACHE EM MEMÓRIA (O SEGREDO DA VELOCIDADE)
+# ==========================================
+_DRIVE_SERVICE = None
+
 def obter_servico_drive():
+    global _DRIVE_SERVICE
+    # Se já autenticou nesta sessão do servidor, usa a memória!
+    if _DRIVE_SERVICE:
+        return _DRIVE_SERVICE
+        
     creds_json_str = os.environ.get('GOOGLE_CREDENTIALS_JSON')
     if not creds_json_str:
         return None
+        
     try:
         creds_data = json.loads(creds_json_str)
         scopes = ['https://www.googleapis.com/auth/drive']
         creds = service_account.Credentials.from_service_account_info(creds_data, scopes=scopes)
-        return build('drive', 'v3', credentials=creds)
+        
+        # O parâmetro cache_discovery=False remove a lentidão brutal da API do Google
+        _DRIVE_SERVICE = build('drive', 'v3', credentials=creds, cache_discovery=False)
+        return _DRIVE_SERVICE
     except Exception as e:
         print(f"❌ Falha ao autenticar Conta de Serviço do Google: {e}")
         return None
+
+# ==========================================
+# FUNÇÕES DE SINCRONIZAÇÃO
+# ==========================================
 
 def baixar_banco_mais_recente():
     service = obter_servico_drive()
@@ -29,7 +46,8 @@ def baixar_banco_mais_recente():
 
     try:
         print("🔄 Baixando o banco de dados do Drive Pessoal...")
-        request = service.files().get_media(fileId=file_id) # pylint: disable=no-member
+        # pylint: disable=no-member
+        request = service.files().get_media(fileId=file_id) 
         buffer = io.BytesIO()
         downloader = MediaIoBaseDownload(buffer, request)
         
@@ -57,12 +75,13 @@ def enviar_banco_para_o_drive():
     try:
         media = MediaFileUpload('ecos_database.db', mimetype='application/x-sqlite3', resumable=True)
         
-        service.files().update( # pylint: disable=no-member
+        # pylint: disable=no-member
+        service.files().update( 
             fileId=file_id,
             media_body=media
         ).execute()
         
-        print("☁️ Nuvem atualizada: Banco de dados sobrescrito com sucesso.")
+        # Removido o print daqui para não poluir o terminal durante o uso rápido
         return True
     except Exception as e:
         print(f"❌ Erro ao atualizar o Drive: {e}")
