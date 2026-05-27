@@ -11,15 +11,29 @@ let ultimoResultadoAuditoria = null;
 const cacheDeRotasMaps = {};
 
 // ==========================================
-// INICIALIZAÇÃO
+// INICIALIZAÇÃO E AUTO-SAVE
 // ==========================================
-document.addEventListener('DOMContentLoaded', () => {
-    carregarMotoristasEVeiculos();
-    criarNovaLinhaBDT();
-    criarNovaLinhaComb();
+document.addEventListener('DOMContentLoaded', async () => {
+    // 1. Espera baixar os motoristas da API primeiro (AWAIT)
+    await carregarMotoristasEVeiculos(); 
+
+    // 2. Tenta restaurar o rascunho. Se não tiver nada salvo, cria as linhas em branco.
+    if (!restaurarRascunhoLocal()) {
+        criarNovaLinhaBDT();
+        criarNovaLinhaComb();
+    }
+
     configurarAtalhosTeclado();
 
-    // NOVIDADE: Alterna o texto e ícone do botão de ocultar tabela
+    // 3. O MODO ESCUTA: Salva silenciosamente a cada clique ou digitação na tela
+    document.addEventListener('input', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') salvarRascunhoLocal();
+    });
+    document.addEventListener('change', (e) => {
+        if (e.target.tagName === 'SELECT') salvarRascunhoLocal();
+    });
+
+    // Alterna o texto e ícone do botão de ocultar tabela
     const collBdt = document.getElementById('collapseBdtTable');
     const btnToggle = document.getElementById('btn-toggle-tabela');
     if(collBdt && btnToggle) {
@@ -77,7 +91,7 @@ function criarNovaLinhaBDT(sugestaoDia = '', sugestaoHoraIn = '', sugestaoOrigem
         <td class="td-destino"><input type="text" class="form-control form-control-sm destino" placeholder="Destino" oninput="sincronizarCacheMaps(this)"></td>
         <td><input type="text" class="form-control form-control-sm hora-out" placeholder="HH:MM" maxlength="5" oninput="mascaraHora(this)"></td>
         <td><input type="number" step="0.1" class="form-control form-control-sm km-out"></td>
-        <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" oninput="sincronizarCacheMaps(this)"></td>
+        <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" onchange="sincronizarCacheMaps(this)"></td>
         <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)"><i class="bi bi-trash3"></i></button></td>
     `;
     tbody.appendChild(tr);
@@ -105,6 +119,7 @@ window.deletarLinha = function(btn) {
     if (tbody.children.length === 0) {
         if (isBdt) criarNovaLinhaBDT(); else criarNovaLinhaComb();
     }
+    salvarRascunhoLocal();
 };
 
 function adicionarColunaParada(linhaAtual) {
@@ -589,6 +604,7 @@ window.salvarBDTAoBanco = async function() {
         
         if (res.ok) {
             alert("✅ " + json.mensagem);
+            limparRascunhoLocal();
             document.querySelector('#bdtTable tbody').innerHTML = '';
             document.querySelector('#combTable tbody').innerHTML = '';
             criarNovaLinhaBDT();
@@ -722,7 +738,7 @@ window.executarMockMensal = async function() {
                     <td class="td-destino"><input type="text" class="form-control form-control-sm destino" value="${destinoFinal}" oninput="sincronizarCacheMaps(this)"></td>
                     <td><input type="text" class="form-control form-control-sm hora-out" value="${formatarHoraImportacao(linha.hora_fim)}" maxlength="5" oninput="mascaraHora(this)"></td>
                     <td><input type="number" step="0.1" class="form-control form-control-sm km-out" value="${linha.km_final}"></td>
-                    <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" value="${linha.km_maps_opcional || ''}" oninput="sincronizarCacheMaps(this)"></td>
+                    <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" value="${linha.km_maps_opcional || ''}" onchange="sincronizarCacheMaps(this)"></td>
                     <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)"><i class="bi bi-trash3"></i></button></td>
                 `;
                 document.querySelector('#bdtTable tbody').appendChild(tr);
@@ -828,7 +844,7 @@ window.importarExcel = async function(event) {
                         <td class="td-destino"><input type="text" class="form-control form-control-sm destino" value="${destinoFinal}" oninput="sincronizarCacheMaps(this)"></td>
                         <td><input type="text" class="form-control form-control-sm hora-out" value="${formatarHoraImportacao(linha.hora_out)}" maxlength="5" oninput="mascaraHora(this)"></td> 
                         <td><input type="number" step="0.1" class="form-control form-control-sm km-out" value="${linha.km_out}"></td> 
-                        <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" value="${linha['KM Maps'] || linha.km_maps || ''}" placeholder="Ex: 25.5" oninput="sincronizarCacheMaps(this)"></td> 
+                        <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" value="${linha['KM Maps'] || linha.km_maps || ''}" placeholder="Ex: 25.5" onchange="sincronizarCacheMaps(this)"></td>
                         <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)" title="Excluir linha"><i class="bi bi-trash3"></i></button></td>
                     `;
                     document.querySelector('#bdtTable tbody').appendChild(tr);
@@ -871,6 +887,7 @@ window.importarExcel = async function(event) {
     
     // Reseta o input de arquivo para permitir subir o mesmo arquivo duas vezes seguidas
     event.target.value = '';
+    salvarRascunhoLocal();
 };
 
 window.importarPDF = async function(event) {
@@ -919,6 +936,7 @@ window.importarPDF = async function(event) {
         btnVisual.innerHTML = textoOriginal;
         btnVisual.disabled = false;
         event.target.value = ''; 
+        salvarRascunhoLocal();
     }
 };
 
@@ -1117,4 +1135,126 @@ window.formatarHoraImportacao = function(horaBruta) {
         console.error("❌ Erro interno ao formatar hora:", e, horaBruta);
         return "";
     }
+};
+
+// ==========================================
+// RASCUNHO LOCAL (AUTO-SAVE)
+// ==========================================
+window.salvarRascunhoLocal = function() {
+    const rascunho = {
+        motorista: document.getElementById('select-motorista')?.value || "",
+        veiculo: document.getElementById('select-veiculo')?.value || "",
+        bdt: [],
+        comb: []
+    };
+
+    // Salva o BDT e suas paradas dinâmicas
+    document.querySelectorAll('#bdtTable tbody tr').forEach(tr => {
+        const paradas = Array.from(tr.querySelectorAll('.parada')).map(p => p.value);
+        rascunho.bdt.push({
+            dia: tr.querySelector('.data-viagem')?.value || "",
+            hora_in: tr.querySelector('.hora-in')?.value || "",
+            km_in: tr.querySelector('.km-in')?.value || "",
+            origem: tr.querySelector('.origem')?.value || "",
+            paradas: paradas,
+            destino: tr.querySelector('.destino')?.value || "",
+            hora_out: tr.querySelector('.hora-out')?.value || "",
+            km_out: tr.querySelector('.km-out')?.value || "",
+            km_maps: tr.querySelector('.km-maps')?.value || ""
+        });
+    });
+
+    // Salva o Combustível
+    document.querySelectorAll('#combTable tbody tr').forEach(tr => {
+        rascunho.comb.push({
+            dia: tr.querySelector('.data-viagem')?.value || "",
+            hora: tr.querySelector('.hora')?.value || "",
+            km_bomba: tr.querySelector('.km-bomba')?.value || "",
+            litros: tr.querySelector('.litros')?.value || ""
+        });
+    });
+
+    localStorage.setItem('ecos_rascunho_v2', JSON.stringify(rascunho));
+};
+
+window.restaurarRascunhoLocal = function() {
+    const salvo = localStorage.getItem('ecos_rascunho_v2');
+    if (!salvo) return false;
+
+    try {
+        const rascunho = JSON.parse(salvo);
+        
+        // Se as duas tabelas estiverem vazias, ignora o rascunho
+        if (rascunho.bdt.length === 0 && rascunho.comb.length === 0) return false;
+
+        // 1. Restaura Motorista e Veículo
+        if(rascunho.motorista) document.getElementById('select-motorista').value = rascunho.motorista;
+        if(rascunho.veiculo) document.getElementById('select-veiculo').value = rascunho.veiculo;
+
+        // 2. Restaura Tabela BDT
+        const tbodyBdt = document.querySelector('#bdtTable tbody');
+        tbodyBdt.innerHTML = '';
+        
+        let maxParadas = 0;
+        rascunho.bdt.forEach(linha => { if(linha.paradas && linha.paradas.length > maxParadas) maxParadas = linha.paradas.length; });
+        
+        document.querySelectorAll('#bdtTable thead th.th-parada').forEach(th => th.remove());
+        const theadTr = document.querySelector('#bdtTable thead tr');
+        const thDestino = theadTr.querySelector('.th-destino');
+        
+        for (let i = 1; i <= maxParadas; i++) {
+            const novoTh = document.createElement('th');
+            novoTh.className = 'th-parada bg-info text-white';
+            novoTh.innerText = `Parada ${i}`;
+            theadTr.insertBefore(novoTh, thDestino);
+        }
+
+        rascunho.bdt.forEach(linha => {
+            let tdsParadas = '';
+            for (let i = 0; i < maxParadas; i++) {
+                const valor = linha.paradas && linha.paradas[i] ? linha.paradas[i] : '';
+                tdsParadas += `<td><input type="text" class="form-control form-control-sm parada" placeholder="Parada ${i+1}" value="${valor}" oninput="sincronizarCacheMaps(this)"></td>`;
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="text" class="form-control form-control-sm data-viagem" value="${linha.dia}" maxlength="10" oninput="mascaraData(this)" onblur="completarAno(this)"></td>
+                <td><input type="text" class="form-control form-control-sm hora-in" value="${linha.hora_in}" maxlength="5" oninput="mascaraHora(this)"></td>
+                <td><input type="number" step="0.1" class="form-control form-control-sm km-in" value="${linha.km_in}"></td>
+                <td><input type="text" class="form-control form-control-sm origem" value="${linha.origem}" oninput="sincronizarCacheMaps(this); atualizarSugestaoDestino(this.closest('tr'))"></td>
+                ${tdsParadas}
+                <td class="td-destino"><input type="text" class="form-control form-control-sm destino" value="${linha.destino}" oninput="sincronizarCacheMaps(this)"></td>
+                <td><input type="text" class="form-control form-control-sm hora-out" value="${linha.hora_out}" maxlength="5" oninput="mascaraHora(this)"></td>
+                <td><input type="number" step="0.1" class="form-control form-control-sm km-out" value="${linha.km_out}"></td>
+                <td><input type="number" step="0.1" class="form-control form-control-sm km-maps" value="${linha.km_maps}" oninput="sincronizarCacheMaps(this)"></td>
+                <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)"><i class="bi bi-trash3"></i></button></td>
+            `;
+            tbodyBdt.appendChild(tr);
+        });
+
+        // 3. Restaura Tabela Combustível
+        const tbodyComb = document.querySelector('#combTable tbody');
+        tbodyComb.innerHTML = '';
+        rascunho.comb.forEach(linha => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="text" class="form-control form-control-sm data-viagem" value="${linha.dia}" maxlength="10" oninput="mascaraData(this)" onblur="completarAno(this)"></td>
+                <td><input type="text" class="form-control form-control-sm hora" value="${linha.hora}" maxlength="5" oninput="mascaraHora(this)"></td>
+                <td><input type="number" step="0.1" class="form-control form-control-sm km-bomba" value="${linha.km_bomba}"></td>
+                <td><input type="number" step="0.1" class="form-control form-control-sm litros" value="${linha.litros}"></td>
+                <td class="text-center"><button class="btn btn-outline-danger btn-sm border-0" onclick="deletarLinha(this)"><i class="bi bi-trash3"></i></button></td>
+            `;
+            tbodyComb.appendChild(tr);
+        });
+
+        console.log("🔄 Rascunho restaurado com sucesso!");
+        return true;
+    } catch(e) {
+        console.error("❌ Erro ao restaurar rascunho:", e);
+        return false;
+    }
+};
+
+window.limparRascunhoLocal = function() {
+    localStorage.removeItem('ecos_rascunho_v2');
 };
