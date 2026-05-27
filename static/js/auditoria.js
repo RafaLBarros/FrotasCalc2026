@@ -200,7 +200,7 @@ window.atualizarSugestaoDestino = function(trAtual) {
     }
 };
 
-// INTELIGÊNCIA: Sincroniza KM Maps pelo valor MAIS POPULAR da rota, respeitando paradas e vazios
+// INTELIGÊNCIA: Sincroniza KM Maps pelo valor MAIS POPULAR da rota, respeitando paradas e NUNCA teimando com o usuário
 window.sincronizarCacheMaps = function(el) {
     const tr = el.closest('tr');
     
@@ -256,11 +256,10 @@ window.sincronizarCacheMaps = function(el) {
         return kmVencedor;
     };
 
-    // CENÁRIO A: Usuário está alterando o KM Maps manualmente
+    // CENÁRIO A: Usuário está mexendo explicitamente na caixa do KM Maps
     if (el.classList.contains('km-maps')) {
         const kmPopular = obterKmMaisPopular(chaveAtual);
         
-        // Se temos um vencedor claro, procuramos quem precisa de ajuda (caixas vazias)
         if (kmPopular !== "") {
             document.querySelectorAll('#bdtTable tbody tr').forEach(row => {
                 const rowO = (row.querySelector('.origem')?.value || '').trim().toUpperCase();
@@ -277,16 +276,17 @@ window.sincronizarCacheMaps = function(el) {
 
                 const rowMaps = row.querySelector('.km-maps');
                 
-                // REGRA DE OURO: Rota idêntica E caixa totalmente vazia. (Nunca sobrepõe)
-                if (rowChave === chaveAtual && rowMaps && rowMaps.value === '') {
+                // O SEGREDO ESTÁ AQUI: "rowMaps !== el"
+                // Garante que o sistema nunca vai forçar o preenchimento na caixa que a aprendiz acabou de apagar!
+                if (rowChave === chaveAtual && rowMaps && rowMaps.value === '' && rowMaps !== el) {
                     rowMaps.value = kmPopular;
                 }
             });
         }
     } 
-    // CENÁRIO B: Usuário acabou de preencher Destino ou Parada
+    // CENÁRIO B: Usuário acabou de preencher Destino ou Parada em uma linha nova
     else {
-        // Se o KM Maps atual estiver vazio, puxamos o valor mais popular da tabela
+        // Puxamos a sugestão apenas se a caixa for nova/vazia
         if (inputMaps && inputMaps.value === '') {
             const kmPopular = obterKmMaisPopular(chaveAtual);
             if (kmPopular !== "") {
