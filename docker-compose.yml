@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  frotas-app:
+    build: .
+    container_name: web_frotas
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Esta linha liga o ficheiro do servidor ao ficheiro dentro do contentor
+      - ./ecos_database.db:/app/ecos_database.db

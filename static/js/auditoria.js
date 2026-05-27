@@ -62,7 +62,7 @@ function criarNovaLinhaBDT(sugestaoDia = '', sugestaoHoraIn = '', sugestaoOrigem
     let tdsParadas = '';
     
     for(let i = 1; i <= numParadas; i++) { 
-        tdsParadas += `<td><input type="text" class="form-control form-control-sm parada" placeholder="Parada ${i}"></td>`; 
+        tdsParadas += `<td><input type="text" class="form-control form-control-sm parada" placeholder="Parada ${i}" oninput="sincronizarCacheMaps(this)"></td>`;
     }
     
     const tr = document.createElement('tr');
@@ -185,29 +185,99 @@ window.atualizarSugestaoDestino = function(trAtual) {
     }
 };
 
-// CORREÇÃO: Removemos o bloqueio de caixa vazia para não cortar os números digitados
+// INTELIGÊNCIA: Sincroniza KM Maps pelo valor MAIS POPULAR da rota, respeitando paradas e vazios
 window.sincronizarCacheMaps = function(el) {
     const tr = el.closest('tr');
+    
+    // 1. Pega Origem e Destino
     const o = (tr.querySelector('.origem')?.value || '').trim().toUpperCase();
     const d = (tr.querySelector('.destino')?.value || '').trim().toUpperCase();
-    if (!o || !d) return;
-    
-    const chave = o + " -> " + d;
+    if (!o || !d) return; 
+
+    // 2. Pega todas as Paradas preenchidas na linha para formar a rota exata
+    const paradas = Array.from(tr.querySelectorAll('.parada'))
+        .map(p => p.value.trim().toUpperCase())
+        .filter(v => v !== '');
+        
+    // 3. Constrói a "Chave Única" da rota atual
+    let chaveAtual = o;
+    if (paradas.length > 0) chaveAtual += " -> " + paradas.join(" -> ");
+    chaveAtual += " -> " + d;
+
     const inputMaps = tr.querySelector('.km-maps');
-    
-    if (el.classList.contains('km-maps')) {
-        cacheDeRotasMaps[chave] = inputMaps.value;
+
+    // MÁGICA: Função interna que faz uma "votação" para descobrir qual o KM mais comum dessa rota na tela
+    const obterKmMaisPopular = (chaveBuscada) => {
+        const contagem = {};
+        let maxVotos = 0;
+        let kmVencedor = "";
+
         document.querySelectorAll('#bdtTable tbody tr').forEach(row => {
             const rowO = (row.querySelector('.origem')?.value || '').trim().toUpperCase();
             const rowD = (row.querySelector('.destino')?.value || '').trim().toUpperCase();
-            const rowMaps = row.querySelector('.km-maps');
-            // Força a cópia exata do que está sendo digitado para as outras linhas iguais
-            if (rowO === o && rowD === d && rowMaps && rowMaps !== inputMaps) {
-                rowMaps.value = inputMaps.value;
+            if (!rowO || !rowD) return;
+
+            const rowParadas = Array.from(row.querySelectorAll('.parada'))
+                .map(p => p.value.trim().toUpperCase())
+                .filter(v => v !== '');
+                
+            let rowChave = rowO;
+            if (rowParadas.length > 0) rowChave += " -> " + rowParadas.join(" -> ");
+            rowChave += " -> " + rowD;
+
+            // Se for a mesma rota exata, computa o voto do KM Maps preenchido
+            if (rowChave === chaveBuscada) {
+                const rowMapsVal = (row.querySelector('.km-maps')?.value || '').trim();
+                if (rowMapsVal !== '') {
+                    contagem[rowMapsVal] = (contagem[rowMapsVal] || 0) + 1;
+                    
+                    if (contagem[rowMapsVal] > maxVotos) {
+                        maxVotos = contagem[rowMapsVal];
+                        kmVencedor = rowMapsVal;
+                    }
+                }
             }
         });
-    } else if (cacheDeRotasMaps[chave] && !inputMaps.value) {
-        inputMaps.value = cacheDeRotasMaps[chave];
+        return kmVencedor;
+    };
+
+    // CENÁRIO A: Usuário está alterando o KM Maps manualmente
+    if (el.classList.contains('km-maps')) {
+        const kmPopular = obterKmMaisPopular(chaveAtual);
+        
+        // Se temos um vencedor claro, procuramos quem precisa de ajuda (caixas vazias)
+        if (kmPopular !== "") {
+            document.querySelectorAll('#bdtTable tbody tr').forEach(row => {
+                const rowO = (row.querySelector('.origem')?.value || '').trim().toUpperCase();
+                const rowD = (row.querySelector('.destino')?.value || '').trim().toUpperCase();
+                if (!rowO || !rowD) return;
+
+                const rowParadas = Array.from(row.querySelectorAll('.parada'))
+                    .map(p => p.value.trim().toUpperCase())
+                    .filter(v => v !== '');
+                    
+                let rowChave = rowO;
+                if (rowParadas.length > 0) rowChave += " -> " + rowParadas.join(" -> ");
+                rowChave += " -> " + rowD;
+
+                const rowMaps = row.querySelector('.km-maps');
+                
+                // REGRA DE OURO: Rota idêntica E caixa totalmente vazia. (Nunca sobrepõe)
+                if (rowChave === chaveAtual && rowMaps && rowMaps.value === '') {
+                    rowMaps.value = kmPopular;
+                }
+            });
+        }
+    } 
+    // CENÁRIO B: Usuário acabou de preencher Destino ou Parada
+    else {
+        // Se o KM Maps atual estiver vazio, puxamos o valor mais popular da tabela
+        if (inputMaps && inputMaps.value === '') {
+            const kmPopular = obterKmMaisPopular(chaveAtual);
+            if (kmPopular !== "") {
+                inputMaps.value = kmPopular;
+            }
+        }
     }
 };
 
